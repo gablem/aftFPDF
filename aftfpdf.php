@@ -2351,7 +2351,7 @@ protected function _putresources()
 	$this->_put('endobj');
 }
 
-function generate_appearance_not_clicked()
+protected function _putcheckboxappearanceempty()
 {
 	$stream = "0.75293 g
 0.5 0.5 17 17 re
@@ -2375,7 +2375,7 @@ s";
 	return $this->n;
 }
 
-function generate_appearance_clicked()
+protected function _putcheckboxappearanceclicked()
 {
 	$stream = "
 q
@@ -2404,7 +2404,7 @@ Q
 	return $this->n;
 }
 
-function _putacroform()
+protected function _putacroform()
 {
 	$this->FieldsByPage = [];
 	
@@ -2426,8 +2426,8 @@ function _putacroform()
 	$this->_put('<</BaseFont/ZapfDingbats/Name/ZaDb/Subtype/Type1/Type/Font>>');
 	$this->_put('endobj');
 	
-	$appearance_not_clicked_obj = $this->generate_appearance_not_clicked();
-	$appearance_clicked_obj = $this->generate_appearance_clicked();
+	$appearance_not_clicked_obj = $this->_putcheckboxappearanceempty();
+	$appearance_clicked_obj = $this->_putcheckboxappearanceclicked();
 	
 	$fields = '';
 	
