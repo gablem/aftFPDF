@@ -1,17 +1,24 @@
 <?php
 /*******************************************************************************
-* tFPDF (based on FPDF 1.82)                                                   *
+* aftFPDF (based on tFPDF 1.32, which in turn is based on FPDF 1.82)           *
 *                                                                              *
-* Version:  1.32                                                               *
-* Date:     2020-08-29                                                         *
-* Authors:  Ian Back <ianb@bpm1.com>                                           *
-*           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl> (versions 1.30+)       *
+* Version:  1.0                                                                *
+* Date:     2022-10-03                                                         *
+* Author:   Ian Back <ianb@bpm1.com>                                           *
+*           Olivier Plathey                                                    *
+*           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>                        *
+*           Gabriel Lemonde-Labrecque <gabriellemondelabrecque@gmail.com>      *
 * License:  LGPL                                                               *
 *******************************************************************************/
 
+define('FPDF_VERSION','1.82');
 define('tFPDF_VERSION','1.32');
+define('aftFPDF_VERSION','1.0');
 
-class tFPDF
+class tFPDF extends aftFPDF {}
+class FPDF extends tFPDF {}
+
+class aftFPDF
 {
 protected $unifontSubset;
 protected $page;               // current page number
@@ -62,6 +69,7 @@ protected $PageLinks;          // array of links in pages
 protected $links;              // array of internal links
 protected $AutoPageBreak;      // automatic page breaking
 protected $PageBreakTrigger;   // threshold used to trigger page breaks
+protected $hasSignature;       // signature flag for acroform
 protected $InHeader;           // flag set when processing header
 protected $InFooter;           // flag set when processing footer
 protected $AliasNbPages;       // alias for total number of pages
@@ -164,6 +172,7 @@ function __construct($orientation='P', $unit='mm', $size='A4')
 	$this->LineWidth = .567/$this->k;
 	// Automatic page break
 	$this->SetAutoPageBreak(true,2*$margin);
+	$this->hasSignature = false;
 	// Default display mode
 	$this->SetDisplayMode('default');
 	// Enable compression
@@ -489,7 +498,7 @@ function AddFont($family, $style='', $file='', $uni=false)
 		}
 		if (!isset($type) ||  !isset($name) || $originalsize != $ttfstat['size']) {
 			$ttffile = $ttffilename;
-//			require_once($this->fontpath.'unifont/ttfonts.php');
+			require_once($this->fontpath.'unifont/ttfonts.php');
 			$ttf = new TTFontFile();
 			$ttf->getMetrics($ttffile);
 			$cw = $ttf->charWidths;
@@ -1066,6 +1075,83 @@ function Ln($h=null)
 		$this->y += $h;
 }
 
+
+// Made by Gab to generate AcroForm
+function CheckboxField($name, $x=null, $y=null, $w=0, $h=0, $properties = [])
+{
+	$instance_value = isset($properties['value']) ? $properties['value'] : 'Yes';
+	
+	// Put an image on the page
+	if ( ! isset($this->Fields[$name]))
+	{
+		$this->Fields[$name] = [
+			'type' => 'Btn',
+			'value' => 'Off',
+			'locations' => []
+		];
+	}
+	
+	if ($properties['checked'])
+		$this->Fields[$name]['value'] = $instance_value;
+	
+	if (is_null($x))
+		$x = $this->x;
+	
+	if (is_null($y))
+		$y = $this->y;
+	
+	$this->Fields[$name]['locations'][] = [
+		'page_number' => $this->page,
+		'x' => $x,
+		'y' => $y,
+		'width' => $w,
+		'height' => $h,
+		'value' => $instance_value
+	];
+}
+
+function TextField($name, $value=null, $x=null, $y=null, $w=0, $h=0, $properties = [])
+{
+	// Make sure the value is a string or else it doesn't show in the PDF
+	if (is_scalar($value) && ! is_string($value))
+		$value = (string)$value;
+	
+	// Put an image on the page
+	if ( ! isset($this->Fields[$name]))
+	{
+		$this->Fields[$name] = [
+			'type' => 'Tx',
+			'value' => $value,
+			'locations' => []
+		] + $properties;
+	}
+	else
+	{
+		// Upage value
+		if (isset($value))
+			$this->Fields[$name]['value'] = $value;
+	}
+	
+	if (is_null($x))
+		$x = $this->x;
+	
+	if (is_null($y))
+		$y = $this->y;
+	
+	$this->Fields[$name]['locations'][] = [
+		'page_number' => $this->page,
+		'x' => $x,
+		'y' => $y,
+		'width' => $w,
+		'height' => $h
+	];
+	
+	if ($properties['signature'])
+		$this->hasSignature = TRUE;
+}
+
+
+
 function Image($file, $x=null, $y=null, $w=0, $h=0, $type='', $link='')
 {
 	// Put an image on the page
@@ -1076,10 +1162,9 @@ function Image($file, $x=null, $y=null, $w=0, $h=0, $type='', $link='')
 		// First use of this image, get info
 		if($type=='')
 		{
-			$pos = strrpos($file,'.');
-			if(!$pos)
-				$this->Error('Image file has no extension and no type was specified: '.$file);
-			$type = substr($file,$pos+1);
+			$ext = pathinfo($file, PATHINFO_EXTENSION);
+			
+			$type = $ext;
 		}
 		$type = strtolower($type);
 		if($type=='jpeg')
@@ -1709,10 +1794,9 @@ protected function _putpage($n)
 	if(isset($this->PageInfo[$n]['rotation']))
 		$this->_put('/Rotate '.$this->PageInfo[$n]['rotation']);
 	$this->_put('/Resources 2 0 R');
+	$annots = '';
 	if(isset($this->PageLinks[$n]))
 	{
-		// Links
-		$annots = '/Annots [';
 		foreach($this->PageLinks[$n] as $pl)
 		{
 			$rect = sprintf('%.2F %.2F %.2F %.2F',$pl[0],$pl[1],$pl[0]+$pl[2],$pl[1]-$pl[3]);
@@ -1729,8 +1813,14 @@ protected function _putpage($n)
 				$annots .= sprintf('/Dest [%d 0 R /XYZ 0 %.2F null]>>',$this->PageInfo[$l[0]]['n'],$h-$l[1]*$this->k);
 			}
 		}
-		$this->_put($annots.']');
 	}
+	if(isset($this->FieldsByPage[$n]))
+	{
+		foreach ($this->FieldsByPage[$n] as $obj_id)
+			$annots .= $obj_id . ' 0 R ';
+	}
+	if($annots)
+		$this->_put('/Annots [' . $annots . ']');
 	if($this->WithAlpha)
 		$this->_put('/Group <</Type /Group /S /Transparency /CS /DeviceRGB>>');
 	$this->_put('/Contents '.($this->n+1).' 0 R>>');
@@ -1749,11 +1839,14 @@ protected function _putpage($n)
 
 protected function _putpages()
 {
+	$this->_putacroform();
+	
 	$nb = $this->page;
 	for($n=1;$n<=$nb;$n++)
 		$this->PageInfo[$n]['n'] = $this->n+1+2*($n-1);
 	for($n=1;$n<=$nb;$n++)
 		$this->_putpage($n);
+	
 	// Pages root
 	$this->_newobj(1);
 	$this->_put('<</Type /Pages');
@@ -2258,9 +2351,301 @@ protected function _putresources()
 	$this->_put('endobj');
 }
 
+function generate_appearance_not_clicked()
+{
+	$stream = "0.75293 g
+0.5 0.5 17 17 re
+s";
+	
+	$this->_newobj();
+	
+	$this->_put('<<');
+	$this->_put('/BBox[0.0 0.0 18.0 18.0]');
+	$this->_put('/FormType 1');
+	$this->_put('/Length ' . strlen($stream));
+	$this->_put('/Matrix[1.0 0.0 0.0 1.0 0.0 0.0]');
+	$this->_put('/Resources<</ProcSet[/PDF]>>');
+	$this->_put('/Subtype/Form');
+	$this->_put('/Type/XObject');
+	$this->_put('>>');
+	
+	$this->_putstream($stream);
+	$this->_put('endobj');
+	
+	return $this->n;
+}
+
+function generate_appearance_clicked()
+{
+	$stream = "
+q
+	0.75293 g
+	0.5 0.5 17 17 re
+	s
+	0 0 0 rg
+	BT
+		/ZaDb 16 Tf
+		2 3 Td
+		(4) Tj
+	ET
+Q
+	";
+	
+	$this->_newobj();
+	$this->_put('<<');
+	$this->_put('/BBox[0.0 0.0 18.0 18.0]');
+	$this->_put('/Length ' . strlen($stream));
+	$this->_put('/Resources<</Font<</ZaDb ' . $this->ZaDb_obj . ' 0 R>>>>');
+	$this->_put('>>');
+	
+	$this->_putstream($stream);
+	$this->_put('endobj');
+	
+	return $this->n;
+}
+
+function _putacroform()
+{
+	$this->FieldsByPage = [];
+	
+	if (!isset($this->Fields))
+		return;
+	
+	$this->_newobj();
+	$this->Helv_encoding_obj = $this->n;
+	$this->_put('<</Differences[24/breve/caron/circumflex/dotaccent/hungarumlaut/ogonek/ring/tilde 39/quotesingle 96/grave 128/bullet/dagger/daggerdbl/ellipsis/emdash/endash/florin/fraction/guilsinglleft/guilsinglright/minus/perthousand/quotedblbase/quotedblleft/quotedblright/quoteleft/quoteright/quotesinglbase/trademark/fi/fl/Lslash/OE/Scaron/Ydieresis/Zcaron/dotlessi/lslash/oe/scaron/zcaron 160/Euro 164/currency 166/brokenbar 168/dieresis/copyright/ordfeminine 172/logicalnot/.notdef/registered/macron/degree/plusminus/twosuperior/threesuperior/acute/mu 183/periodcentered/cedilla/onesuperior/ordmasculine 188/onequarter/onehalf/threequarters 192/Agrave/Aacute/Acircumflex/Atilde/Adieresis/Aring/AE/Ccedilla/Egrave/Eacute/Ecircumflex/Edieresis/Igrave/Iacute/Icircumflex/Idieresis/Eth/Ntilde/Ograve/Oacute/Ocircumflex/Otilde/Odieresis/multiply/Oslash/Ugrave/Uacute/Ucircumflex/Udieresis/Yacute/Thorn/germandbls/agrave/aacute/acircumflex/atilde/adieresis/aring/ae/ccedilla/egrave/eacute/ecircumflex/edieresis/igrave/iacute/icircumflex/idieresis/eth/ntilde/ograve/oacute/ocircumflex/otilde/odieresis/divide/oslash/ugrave/uacute/ucircumflex/udieresis/yacute/thorn/ydieresis]/Type/Encoding>>');
+	$this->_put('endobj');
+	
+	$this->_newobj();
+	$this->Helv_obj = $this->n;
+	$this->_put('<</BaseFont/Helvetica/Name/Helv/Subtype/Type1/Encoding ' . $this->Helv_encoding_obj . ' 0 R/Type/Font>>');
+	$this->_put('endobj');
+	
+	$this->_newobj();
+	$this->ZaDb_obj = $this->n;
+	$this->_put('<</BaseFont/ZapfDingbats/Name/ZaDb/Subtype/Type1/Type/Font>>');
+	$this->_put('endobj');
+	
+	$appearance_not_clicked_obj = $this->generate_appearance_not_clicked();
+	$appearance_clicked_obj = $this->generate_appearance_clicked();
+	
+	$fields = '';
+	
+	foreach($this->Fields as $name => $properties)
+	{
+		// If several fields has the same name, treat them as one
+		if(count($properties['locations']) > 1)
+		{
+			$parent_id = $this->n + count($properties['locations']) + 1;
+			
+			$kids = '';
+			
+			foreach($properties['locations'] as $key => $style)
+			{
+				$rect = sprintf('%.2F %.2F %.2F %.2F', $style['x']*$this->k, 792 - $style['y']*$this->k, ($style['x']+$style['width'])*$this->k, 792 - ($style['y']+$style['height'])*$this->k);
+				
+				// Write Widget annotation
+				
+				if($properties['type'] === 'Tx')
+				{
+					$this->_newobj();
+				
+					$this->_put('<<');
+					$this->_put('/F 4');
+					$this->_put('/Parent ' . $parent_id . ' 0 R');
+					$this->_put('/Rect[ '.$rect.' ]');
+					$this->_put('/Subtype/Widget');
+					$this->_put('/Type/Annot'); // For some reason, they decided to generalize text fields into annotations
+					$this->_put('>>');
+					$this->_put('endobj');
+				}
+				else if($properties['type'] === 'Btn')
+				{
+					$this->_newobj();
+					$this->_put('<<');
+					$this->_put('/F 4');
+					$this->_put('/Parent ' . $parent_id . ' 0 R');
+					$this->_put('/Rect[ '.$rect.' ]');
+					$this->_put('/Subtype/Widget');
+					$this->_put('/Type/Annot'); // For some reason, they decided to generalize text fields into annotations
+					$this->_put('/MK'); // appearance dictionary (when clicked only???)
+					$this->_put('<<');
+					$this->_put('/BC[0.0]'); // border color     : array
+					$this->_put('/BG[0.0]'); // background color : array
+					$this->_put('>>');
+					$this->_put('/AP'); // appearance
+					$this->_put('<<');
+					$this->_put('/N');
+					$this->_put('<<');
+					$this->_put('/Off ' . $appearance_not_clicked_obj . ' 0 R');
+					$this->_put('/' . $style['value'] . ' ' . $appearance_clicked_obj . ' 0 R');
+					$this->_put('>>');
+					$this->_put('>>');
+					
+					if($properties['value'] === $style['value'])
+						$this->_put('/AS/' . $style['value']); // Current appearance state (required if AP is non-empty)
+					else
+						$this->_put('/AS/Off'); // Current appearance state (required if AP is non-empty)
+					
+					$this->_put('>>');
+					$this->_put('endobj');
+				}
+				
+				if(!isset($this->FieldsByPage[$style['page_number']]))
+					$this->FieldsByPage[$style['page_number']] = [];
+				
+				$this->FieldsByPage[$style['page_number']][] = $this->n;
+				
+				$kids .= $this->n . ' 0 R ';
+			}
+			
+			$fields .= $parent_id . ' 0 R ';
+			
+			// parent object
+			$this->_newobj();
+			
+			$this->_put('<<');
+			
+			if($properties['type'] === 'Tx')
+			{
+				$this->_put('/DA(/Helv 10 Tf 0 g)');  // Default appearance
+				
+				if($properties['signature'])
+					$this->_put('/FT/Sig'); // Field type = Signature
+				else
+					$this->_put('/FT/Tx'); // Field type = Text
+				
+				if(isset($properties['multiline']) && $properties['multiline'])
+					$this->_put('/Ff 4096'); // Multiline?
+				
+				$this->_put('/Kids[' . $kids . ']');
+				
+				$this->_put('/T' . $this->_textstring($name)); // Field Name
+				
+				if($properties['value'] && ! $properties['signature'])
+				{
+					$this->_put('/V' . $this->_textstring($properties['value'])); // Field Value
+				}
+			}
+			else if($properties['type'] === 'Btn')
+			{
+				// Write Widget annotation
+				$this->_put('/DA(/ZaDb 0 Tf 0 g)');  // Default appearance
+				$this->_put('/FT/Btn'); // Field type = Btn (checkbox)
+				$this->_put('/Kids[' . $kids . ']');
+				$this->_put('/T' . $this->_textstring($name)); // Field Name
+				
+				if($properties['value'] !== 'Off')
+					$this->_put('/V' . $this->_textstring($properties['value']));
+			}
+			
+			$this->_put('>>');
+			$this->_put('endobj');
+		}
+		else
+		{
+			foreach($properties['locations'] as $style)
+			{
+				$rect = sprintf('%.2F %.2F %.2F %.2F', $style['x']*$this->k, 792 - $style['y']*$this->k, ($style['x']+$style['width'])*$this->k, 792 - ($style['y']+$style['height'])*$this->k);
+				
+				$this->_newobj();
+				
+				$this->_put('<<');
+				
+				if($properties['type'] === 'Tx')
+				{
+					// Write Widget annotation
+					$this->_put('/DA(/Helv 10 Tf 0 g)');  // Default appearance
+					$this->_put('/F 4'); // annotation flag = 4   ==>  NoZoom
+					
+					if($properties['signature'])
+						$this->_put('/FT/Sig'); // Field type = Signature
+					else
+						$this->_put('/FT/Tx'); // Field type = Text
+					
+					if(isset($properties['multiline']) && $properties['multiline'])
+						$this->_put('/Ff 4096');
+					
+					$this->_put('/Rect[ '.$rect.' ]');
+					$this->_put('/Subtype/Widget');
+					$this->_put('/Type/Annot'); // For some reason, they decided to generalize text fields into annotations
+					$this->_put('/T' . $this->_textstring($name)); // Field Name
+					$this->_put('/V' . $this->_textstring($properties['value'])); // Field Value
+				}
+				else if($properties['type'] === 'Btn')
+				{
+					if(is_null($properties['value']))
+						$properties['value'] = 'Yes';
+					
+					// Write Widget annotation
+					$this->_put('/DA(/ZaDb 0 Tf 0 g)');  // Default appearance
+					$this->_put('/F 4');
+					$this->_put('/FT/Btn'); // Field type = Btn (checkbox)
+					
+					$this->_put('/Rect[ '.$rect.' ]');
+					$this->_put('/Subtype/Widget');
+					$this->_put('/Type/Annot'); // For some reason, they decided to generalize text fields into annotations
+					$this->_put('/T' . $this->_textstring($name)); // Field Name
+					
+					if($properties['value'] !== 'Off')
+						$this->_put('/V' . $this->_textstring($properties['value'])); // Field Value
+					
+					$this->_put('/MK'); // appearance dictionary (when clicked only???)
+					$this->_put('<<');
+					$this->_put('/BC[0.0]'); // border color     : array
+					$this->_put('/BG[0.0]'); // background color : array
+					$this->_put('>>');
+					
+					$this->_put('/AP'); // appearance
+					$this->_put('<<');
+					$this->_put('/N');
+					$this->_put('<<');
+					$this->_put('/Off ' . $appearance_not_clicked_obj . ' 0 R');
+					$this->_put('/' . $style['value'] . ' ' . $appearance_clicked_obj . ' 0 R');
+					$this->_put('>>');
+					$this->_put('>>');
+					
+					if($properties['value'] === $style['value'])
+						$this->_put('/AS/' . $properties['value']); // Current appearance state (required if AP is non-empty)
+					else
+						$this->_put('/AS/Off'); // Current appearance state (required if AP is non-empty)
+				}
+				
+				$this->_put('>>');
+				$this->_put('endobj');
+				
+				$fields .= $this->n . ' 0 R ';
+				
+				if ( ! isset($this->FieldsByPage[$style['page_number']]))
+					$this->FieldsByPage[$style['page_number']] = [];
+				
+				$this->FieldsByPage[$style['page_number']][] = $this->n;
+				
+			}
+		}
+	}
+	
+	// AcroForm Dictionary
+	$this->_newobj();
+	$this->_put('<<');
+	$this->_put('/Fields [ ' . $fields . ']');
+	$this->_put('/DR');
+	$this->_put('<<');
+	$this->_put('/Font<</Helv ' . $this->Helv_obj . ' 0 R/ZaDb ' . $this->ZaDb_obj . ' 0 R>>');
+	$this->_put('>>');
+	
+	if($this->hasSignature)
+		$this->_put('/SigFlags 1');
+	
+	$this->_put('>>');
+	$this->_put('endobj');
+	
+	$this->dictionary_ref = $this->n;
+}
+
 protected function _putinfo()
 {
-	$this->metadata['Producer'] = 'tFPDF '.tFPDF_VERSION;
+	$this->metadata['Producer'] = 'aftFPDF '.aftFPDF_VERSION;
 	$this->metadata['CreationDate'] = 'D:'.@date('YmdHis');
 	foreach($this->metadata as $key=>$value)
 		$this->_put('/'.$key.' '.$this->_textstring($value));
@@ -2268,6 +2653,9 @@ protected function _putinfo()
 
 protected function _putcatalog()
 {
+	if($this->Fields)
+		$this->_put('/AcroForm '.$this->dictionary_ref.' 0 R');
+	
 	$n = $this->PageInfo[1]['n'];
 	$this->_put('/Type /Catalog');
 	$this->_put('/Pages 1 0 R');
@@ -2372,7 +2760,5 @@ protected function UTF8StringToArray($str) {
    return $out;
 }
 
-
-
 }
-?>
+
