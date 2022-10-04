@@ -5,7 +5,7 @@
 * Version:  1.0                                                                *
 * Date:     2022-10-03                                                         *
 * Author:   Ian Back <ianb@bpm1.com>                                           *
-*           Olivier Plathey                                                    *
+*           Olivier Plathey <oliver@fpdf.org>                                  *
 *           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>                        *
 *           Gabriel Lemonde-Labrecque <gabriellemondelabrecque@gmail.com>      *
 * License:  LGPL                                                               *
