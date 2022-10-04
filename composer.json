@@ -1,9 +1,8 @@
 {
-    "name": "setasign/tfpdf",
-    "homepage": "http://fpdf.org/en/script/script92.php",
-    "description": "This class is a modified version of FPDF that adds UTF-8 support. As of version 1.31 it is based on FPDF 1.82. Before it was based on FPDF 1.7.",
+    "name": "gablem/aftfpdf",
+    "description": "This class is a modified version of tFPDF that adds AcroForm support. It is based on tFPDF 1.32 which in turn is based on FPDF 1.82.",
     "type": "library",
-    "keywords": ["pdf", "fpdf", "unicode", "tfpdf"],
+    "keywords": ["pdf", "fpdf", "unicode", "tfpdf", "aftfpdf"],
     "license": "LGPL-2.1",
     "authors": [
         {
@@ -11,18 +10,21 @@
         },
         {
             "name": "Tycho Veltmeijer",
-            "email": "tfpdf@tychoveltmeijer.nl",
-            "role": "Maintainer"
+            "email": "tfpdf@tychoveltmeijer.nl"
         },
         {
             "name": "Olivier Plathey",
             "email": "oliver@fpdf.org",
             "homepage": "http://fpdf.org/"
+        },
+	{
+            "name": "Gabriel Lemonde-Labrecque",
+            "email": "gabriellemondelabrecque@gmail.com"
         }
     ],
     "autoload": {
         "classmap": [
-            "tfpdf.php",
+            "aftfpdf.php",
             "font/unifont/ttfonts.php"
         ]
     }
