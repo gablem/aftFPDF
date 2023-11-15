@@ -2,8 +2,8 @@
 /*******************************************************************************
 * aftFPDF (based on tFPDF 1.32, which in turn is based on FPDF 1.82)           *
 *                                                                              *
-* Version:  1.0                                                                *
-* Date:     2022-10-03                                                         *
+* Version:  1.01                                                                *
+* Date:     2023-11-15                                                        *
 * Author:   Ian Back <ianb@bpm1.com>                                           *
 *           Olivier Plathey <oliver@fpdf.org>                                  *
 *           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>                        *
@@ -13,7 +13,7 @@
 
 define('FPDF_VERSION','1.82');
 define('tFPDF_VERSION','1.32');
-define('aftFPDF_VERSION','1.0');
+define('aftFPDF_VERSION','1.01');
 
 class tFPDF extends aftFPDF {}
 class FPDF extends tFPDF {}
@@ -2523,9 +2523,7 @@ protected function _putacroform()
 				$this->_put('/T' . $this->_textstring($name)); // Field Name
 				
 				if($properties['value'] && ! $properties['signature'])
-				{
 					$this->_put('/V' . $this->_textstring($properties['value'])); // Field Value
-				}
 			}
 			else if($properties['type'] === 'Btn')
 			{
@@ -2570,7 +2568,9 @@ protected function _putacroform()
 					$this->_put('/Subtype/Widget');
 					$this->_put('/Type/Annot'); // For some reason, they decided to generalize text fields into annotations
 					$this->_put('/T' . $this->_textstring($name)); // Field Name
-					$this->_put('/V' . $this->_textstring($properties['value'])); // Field Value
+					
+					if($properties['value'] && ! $properties['signature'])
+						$this->_put('/V' . $this->_textstring($properties['value'])); // Field Value
 				}
 				else if($properties['type'] === 'Btn')
 				{
