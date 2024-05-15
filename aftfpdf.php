@@ -2,8 +2,8 @@
 /*******************************************************************************
 * aftFPDF (based on tFPDF 1.32, which in turn is based on FPDF 1.82)           *
 *                                                                              *
-* Version:  1.01                                                                *
-* Date:     2023-11-15                                                        *
+* Version:  1.02                                                                *
+* Date:     2024-05-15                                                        *
 * Author:   Ian Back <ianb@bpm1.com>                                           *
 *           Olivier Plathey <oliver@fpdf.org>                                  *
 *           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>                        *
@@ -13,7 +13,7 @@
 
 define('FPDF_VERSION','1.82');
 define('tFPDF_VERSION','1.32');
-define('aftFPDF_VERSION','1.01');
+define('aftFPDF_VERSION','1.02');
 
 class tFPDF extends aftFPDF {}
 class FPDF extends tFPDF {}
@@ -69,6 +69,7 @@ protected $PageLinks;          // array of links in pages
 protected $links;              // array of internal links
 protected $AutoPageBreak;      // automatic page breaking
 protected $PageBreakTrigger;   // threshold used to trigger page breaks
+protected $Fields;             // fields for acroform
 protected $hasSignature;       // signature flag for acroform
 protected $InHeader;           // flag set when processing header
 protected $InFooter;           // flag set when processing footer
