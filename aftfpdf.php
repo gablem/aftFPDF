@@ -2,8 +2,8 @@
 /*******************************************************************************
 * aftFPDF (based on tFPDF 1.32, which in turn is based on FPDF 1.82)           *
 *                                                                              *
-* Version:  1.02                                                                *
-* Date:     2024-05-15                                                        *
+* Version:  1.03                                                                *
+* Date:     2025-01-24                                                        *
 * Author:   Ian Back <ianb@bpm1.com>                                           *
 *           Olivier Plathey <oliver@fpdf.org>                                  *
 *           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>                        *
@@ -13,7 +13,7 @@
 
 define('FPDF_VERSION','1.82');
 define('tFPDF_VERSION','1.32');
-define('aftFPDF_VERSION','1.02');
+define('aftFPDF_VERSION','1.03');
 
 class tFPDF extends aftFPDF {}
 class FPDF extends tFPDF {}
@@ -70,7 +70,12 @@ protected $links;              // array of internal links
 protected $AutoPageBreak;      // automatic page breaking
 protected $PageBreakTrigger;   // threshold used to trigger page breaks
 protected $Fields;             // fields for acroform
+protected $FieldsByPage;       // fields for acroform sorted by page number
+protected $Helv_encoding_obj;  // object for encoding of Helvetica
+protected $Helv_obj;           // object for Helvetica font
+protected $ZaDb_obj;           // 
 protected $hasSignature;       // signature flag for acroform
+protected $dictionary_ref;     // reference for dictionary
 protected $InHeader;           // flag set when processing header
 protected $InFooter;           // flag set when processing footer
 protected $AliasNbPages;       // alias for total number of pages
@@ -245,31 +250,31 @@ function SetCompression($compress)
 function SetTitle($title, $isUTF8=false)
 {
 	// Title of document
-	$this->metadata['Title'] = $isUTF8 ? $title : utf8_encode($title);
+	$this->metadata['Title'] = $isUTF8 ? $title : $this->_UTF8encode($title);
 }
 
 function SetAuthor($author, $isUTF8=false)
 {
 	// Author of document
-	$this->metadata['Author'] = $isUTF8 ? $author : utf8_encode($author);
+	$this->metadata['Author'] = $isUTF8 ? $author : $this->_UTF8encode($author);
 }
 
 function SetSubject($subject, $isUTF8=false)
 {
 	// Subject of document
-	$this->metadata['Subject'] = $isUTF8 ? $subject : utf8_encode($subject);
+	$this->metadata['Subject'] = $isUTF8 ? $subject : $this->_UTF8encode($subject);
 }
 
 function SetKeywords($keywords, $isUTF8=false)
 {
 	// Keywords of document
-	$this->metadata['Keywords'] = $isUTF8 ? $keywords : utf8_encode($keywords);
+	$this->metadata['Keywords'] = $isUTF8 ? $keywords : $this->_UTF8encode($keywords);
 }
 
 function SetCreator($creator, $isUTF8=false)
 {
 	// Creator of document
-	$this->metadata['Creator'] = $isUTF8 ? $creator : utf8_encode($creator);
+	$this->metadata['Creator'] = $isUTF8 ? $creator : $this->_UTF8encode($creator);
 }
 
 function AliasNbPages($alias='{nb}')
@@ -477,12 +482,12 @@ function AddFont($family, $style='', $file='', $uni=false)
 	if($style=='IB')
 		$style = 'BI';
 	if($file=='') {
-	   if ($uni) {
-		$file = str_replace(' ','',$family).strtolower($style).'.ttf';
-	   }
-	   else {
-		$file = str_replace(' ','',$family).strtolower($style).'.php';
-	   }
+		if ($uni) {
+			$file = str_replace(' ','',$family).strtolower($style).'.ttf';
+		}
+		else {
+			$file = str_replace(' ','',$family).strtolower($style).'.php';
+		}
 	}
 	$fontkey = $family.$style;
 	if(isset($this->fonts[$fontkey]))
@@ -1459,11 +1464,17 @@ protected function _httpencode($param, $value, $isUTF8)
 	if($this->_isascii($value))
 		return $param.'="'.$value.'"';
 	if(!$isUTF8)
-		$value = utf8_encode($value);
+		$value = $this->_UTF8encode($value);
 	if(strpos($_SERVER['HTTP_USER_AGENT'],'MSIE')!==false)
 		return $param.'="'.rawurlencode($value).'"';
 	else
 		return $param."*=UTF-8''".rawurlencode($value);
+}
+
+protected function _UTF8encode($s)
+{
+	// Convert ISO-8859-1 to UTF-8
+	return mb_convert_encoding($s,'UTF-8','ISO-8859-1');
 }
 
 protected function _UTF8toUTF16($s)

@@ -10,7 +10,8 @@
         },
         {
             "name": "Tycho Veltmeijer",
-            "email": "tfpdf@tychoveltmeijer.nl"
+            "email": "tfpdf@tychoveltmeijer.nl",
+            "role": "Maintainer"
         },
         {
             "name": "Olivier Plathey",
@@ -19,7 +20,7 @@
         },
 	{
             "name": "Gabriel Lemonde-Labrecque",
-            "email": "gabriellemondelabrecque@gmail.com"
+            "email": "gabriel@gablem.com"
         }
     ],
     "autoload": {

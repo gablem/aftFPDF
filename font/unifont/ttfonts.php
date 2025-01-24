@@ -69,6 +69,15 @@ var $charWidths;
 var $defaultWidth;
 var $maxStrLenRead;
 
+var $TTCFonts;
+var $version;
+var $sFamilyClass;
+var $sFamilySubClass;
+var $restrictedUse;
+var $codeToGlyph;
+var $maxUniChar;
+var $glyphdata;
+
 	function __construct() {
 		$this->maxStrLenRead = 200000;	// Maximum size of glyf table to read in as string (otherwise reads each glyph from file)
 	}
@@ -1084,6 +1093,3 @@ var $maxStrLenRead;
 
 
 }
-
-
-?>
