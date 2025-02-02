@@ -2,7 +2,7 @@
 /*******************************************************************************
 * aftFPDF (based on tFPDF 1.32, which in turn is based on FPDF 1.82)           *
 *                                                                              *
-* Version:  1.05                                                              *
+* Version:  1.1.0                                                              *
 * Date:     2025-02-01                                                         *
 * Author:   Ian Back <ianb@bpm1.com>                                           *
 *           Olivier Plathey <oliver@fpdf.org>                                  *
@@ -13,7 +13,7 @@
 
 define('FPDF_VERSION','1.82');
 define('tFPDF_VERSION','1.32');
-define('aftFPDF_VERSION','1.05');
+define('aftFPDF_VERSION','1.1.0');
 
 class tFPDF extends aftFPDF {}
 class FPDF extends tFPDF {}
@@ -61,6 +61,9 @@ protected $FontSize;           // current font size in user unit
 protected $DrawColor;          // commands for drawing color
 protected $FillColor;          // commands for filling color
 protected $TextColor;          // commands for text color
+protected $StrokeAlpha;        // stroke alpha
+protected $FillAlpha;          // non-stroking alpha
+protected $BlendMode;          // blend mode for alpha blending
 protected $ColorFlag;          // indicates whether fill and text colors are different
 protected $WithAlpha;          // indicates whether alpha channel is used
 protected $ws;                 // word spacing
@@ -71,6 +74,7 @@ protected $AutoPageBreak;      // automatic page breaking
 protected $PageBreakTrigger;   // threshold used to trigger page breaks
 protected $Fields;             // fields for acroform
 protected $FieldsByPage;       // fields for acroform sorted by page number
+protected $ExtGStates;         // array of graphic states
 protected $Helv_encoding_obj;  // object for encoding of Helvetica
 protected $Helv_obj;           // object for Helvetica font
 protected $ZaDb_obj;           // 
@@ -115,8 +119,12 @@ function __construct($orientation='P', $unit='mm', $size='A4')
 	$this->DrawColor = '0 G';
 	$this->FillColor = '0 g';
 	$this->TextColor = '0 g';
+	$this->StrokeAlpha = 1;
+	$this->FillAlpha = 1;
+	$this->BlendMode = 'Normal';
 	$this->ColorFlag = false;
 	$this->WithAlpha = false;
+	$this->ExtGStates = array();
 	$this->ws = 0;
 	// Font path
 	if(defined('FPDF_FONTPATH'))
@@ -318,6 +326,9 @@ function AddPage($orientation='', $size='', $rotation=0)
 	$dc = $this->DrawColor;
 	$fc = $this->FillColor;
 	$tc = $this->TextColor;
+	$sa = $this->StrokeAlpha;
+	$fa = $this->FillAlpha;
+	$bm = $this->BlendMode;
 	$cf = $this->ColorFlag;
 	if($this->page>0)
 	{
@@ -346,6 +357,7 @@ function AddPage($orientation='', $size='', $rotation=0)
 	if($fc!='0 g')
 		$this->_out($fc);
 	$this->TextColor = $tc;
+	$this->_applyAlpha();
 	$this->ColorFlag = $cf;
 	// Page header
 	$this->InHeader = true;
@@ -421,7 +433,61 @@ function SetTextColor($r, $g=null, $b=null)
 		$this->TextColor = sprintf('%.3F g',$r/255);
 	else
 		$this->TextColor = sprintf('%.3F %.3F %.3F rg',$r/255,$g/255,$b/255);
+	
 	$this->ColorFlag = ($this->FillColor!=$this->TextColor);
+}
+
+function SetAlpha($alpha, $alpha2 = null, $bm = 'Normal')
+{
+	if ($alpha2 === null)
+		$alpha2 = $alpha;
+	
+	if (!is_numeric($alpha2))
+	{
+		$bm = $alpha2;
+		$alpha2 = $alpha;
+	}
+	
+	if ($alpha != 1 || $alpha2 != 1 || $bm != 'Normal')
+	{
+		$this->WithAlpha = true;
+	}
+	
+	$this->StrokeAlpha = $alpha;
+	$this->FillAlpha = $alpha2;
+	$this->BlendMode = $bm;
+	
+	if ($this->state == 2)
+		$this->_applyAlpha();
+}
+
+protected function _applyAlpha() 
+{
+	$alpha = $this->StrokeAlpha;
+	$alpha2 = $this->FillAlpha;
+	$bm = $this->BlendMode;
+	
+	if ( ! $this->WithAlpha && $alpha == 1 && $alpha2 == 1 && $bm == 'Normal')
+	{
+		// No need to set alpha if it's never used
+		return;
+	}
+	
+	// Create a new graphic state if it doesn't already exist
+	$key = sprintf('%.3F|%.3F|%s', $alpha, $alpha2, $bm);
+	
+	if (!isset($this->ExtGStates[$key]))
+	{
+		$this->ExtGStates[$key] = array(
+			'id' => count($this->ExtGStates) + 1,
+			'ca' => $alpha,
+			'CA' => $alpha2,
+			'BM' => $bm
+		);
+	}
+	
+	// Apply the graphic state to the PDF
+	$this->_out(sprintf('/GS%d gs', $this->ExtGStates[$key]['id']));
 }
 
 function GetStringWidth($s)
@@ -539,7 +605,7 @@ function AddFont($family, $style='', $file='', $uni=false)
 			$ttf->getMetrics($ttffile);
 			$cw = $ttf->charWidths;
 			$name = preg_replace('/[ ()]/','',$ttf->fullName);
-
+			
 			$desc= array('Ascent'=>round($ttf->ascent),
 			'Descent'=>round($ttf->descent),
 			'CapHeight'=>round($ttf->capHeight),
@@ -706,6 +772,7 @@ function Text($x, $y, $txt)
 	$txt = (string)$txt;
 	if(!isset($this->CurrentFont))
 		$this->Error('No font has been set');
+	
 	if ($this->unifontSubset)
 	{
 		$txt2 = '('.$this->_escape($this->UTF8ToUTF16BE($txt, false)).')';
@@ -714,11 +781,15 @@ function Text($x, $y, $txt)
 	}
 	else 
 		$txt2 = '('.$this->_escape($txt).')';
+	
 	$s = sprintf('BT %.2F %.2F Td %s Tj ET',$x*$this->k,($this->h-$y)*$this->k,$txt2);
+	
 	if($this->underline && $txt!='')
 		$s .= ' '.$this->_dounderline($x,$y,$txt);
+	
 	if($this->ColorFlag)
 		$s = 'q '.$this->TextColor.' '.$s.' Q';
+	
 	$this->_out($s);
 }
 
@@ -1164,20 +1235,18 @@ function Ln($h=null)
 		$this->y += $h;
 }
 
-
-// Made by Gab to generate AcroForm
-function CheckboxField($name, $x=null, $y=null, $w=0, $h=0, $properties = [])
+function CheckboxField($name, $x=null, $y=null, $w=0, $h=0, $properties = array())
 {
 	$instance_value = isset($properties['value']) ? $properties['value'] : 'Yes';
 	
 	// Put an image on the page
 	if ( ! isset($this->Fields[$name]))
 	{
-		$this->Fields[$name] = [
+		$this->Fields[$name] = array(
 			'type' => 'Btn',
 			'value' => 'Off',
-			'locations' => []
-		];
+			'locations' => array()
+		);
 	}
 	
 	if ($properties['checked'])
@@ -1189,17 +1258,18 @@ function CheckboxField($name, $x=null, $y=null, $w=0, $h=0, $properties = [])
 	if (is_null($y))
 		$y = $this->y;
 	
-	$this->Fields[$name]['locations'][] = [
+	$this->Fields[$name]['locations'][] = array(
 		'page_number' => $this->page,
 		'x' => $x,
 		'y' => $y,
 		'width' => $w,
 		'height' => $h,
 		'value' => $instance_value
-	];
+	);
 }
 
-function TextField($name, $value=null, $x=null, $y=null, $w=0, $h=0, $properties = [])
+
+function TextField($name, $value=null, $x=null, $y=null, $w=0, $h=0, $properties = array())
 {
 	// Make sure the value is a string or else it doesn't show in the PDF
 	if (is_scalar($value) && ! is_string($value))
@@ -1208,11 +1278,11 @@ function TextField($name, $value=null, $x=null, $y=null, $w=0, $h=0, $properties
 	// Put an image on the page
 	if ( ! isset($this->Fields[$name]))
 	{
-		$this->Fields[$name] = [
+		$this->Fields[$name] = array(
 			'type' => 'Tx',
 			'value' => $value,
-			'locations' => []
-		] + $properties;
+			'locations' => array()
+		) + $properties;
 	}
 	else
 	{
@@ -1227,19 +1297,17 @@ function TextField($name, $value=null, $x=null, $y=null, $w=0, $h=0, $properties
 	if (is_null($y))
 		$y = $this->y;
 	
-	$this->Fields[$name]['locations'][] = [
+	$this->Fields[$name]['locations'][] = array(
 		'page_number' => $this->page,
 		'x' => $x,
 		'y' => $y,
 		'width' => $w,
 		'height' => $h
-	];
+	);
 	
 	if ($properties['signature'])
-		$this->hasSignature = TRUE;
+		$this->hasSignature = true;
 }
-
-
 
 function Image($file, $x=null, $y=null, $w=0, $h=0, $type='', $link='')
 {
@@ -1966,6 +2034,23 @@ protected function _putpages()
 	$this->_put('endobj');
 }
 
+protected function _putextgstates()
+{
+	foreach ($this->ExtGStates as $key => $extGState)
+	{
+		$this->_newobj();
+		$this->_put('<< /Type /ExtGState');
+		$this->_put('/ca ' . sprintf('%.3F', $extGState['ca']));  // Fill opacity
+		$this->_put('/CA ' . sprintf('%.3F', $extGState['CA']));  // Stroke opacity
+		$this->_put('/BM /' . $extGState['BM']);  // Blend mode
+		$this->_put('>>');
+		$this->_put('endobj');
+		
+		// Store the object ID to use it in the resources catalog
+		$this->ExtGStates[$key]['n'] = $this->n;
+	}
+}
+
 protected function _putfonts()
 {
 	foreach($this->FontFiles as $file=>$info)
@@ -2502,10 +2587,18 @@ protected function _putresourcedict()
 	$this->_put('/XObject <<');
 	$this->_putxobjectdict();
 	$this->_put('>>');
+	if (!empty($this->ExtGStates))
+	{
+		$this->_put('/ExtGState <<');
+		foreach ($this->ExtGStates as $extGState)
+			$this->_put('/GS' . $extGState['id'] . ' ' . $extGState['n'] . ' 0 R');
+		$this->_put('>>');
+	}
 }
 
 protected function _putresources()
 {
+	$this->_putextgstates();
 	$this->_putfonts();
 	$this->_putimages();
 	// Resource dictionary
