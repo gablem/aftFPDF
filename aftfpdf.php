@@ -2,18 +2,18 @@
 /*******************************************************************************
 * aftFPDF (based on tFPDF 1.32, which in turn is based on FPDF 1.82)           *
 *                                                                              *
-* Version:  1.1.0                                                              *
-* Date:     2025-02-01                                                         *
-* Author:   Ian Back <ianb@bpm1.com>                                           *
-*           Olivier Plathey <oliver@fpdf.org>                                  *
-*           Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>                        *
-*           Gabriel Lemonde-Labrecque <gabriellemondelabrecque@gmail.com>      *
+* Version:           1.1.1                                                     *
+* Date:              2025-07-16                                                *
+* Author:            Gabriel Lemonde-Labrecque <gabriel@gablem.com>            *
+* Previous authors:  Ian Back <ianb@bpm1.com>                                  *
+*                    Olivier Plathey <oliver@fpdf.org>                         *
+*                    Tycho Veltmeijer <tfpdf@tychoveltmeijer.nl>               *
 * License:  LGPL                                                               *
 *******************************************************************************/
 
 define('FPDF_VERSION','1.82');
 define('tFPDF_VERSION','1.32');
-define('aftFPDF_VERSION','1.1.0');
+define('aftFPDF_VERSION','1.1.1');
 
 class tFPDF extends aftFPDF {}
 class FPDF extends tFPDF {}
@@ -1523,10 +1523,7 @@ protected function _getpagesize($size)
 	}
 	else
 	{
-		if($size[0]>$size[1])
-			return array($size[1], $size[0]);
-		else
-			return $size;
+		return $size;
 	}
 }
 
